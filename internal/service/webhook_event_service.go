@@ -18,11 +18,12 @@ import (
 
 // WebhookEventService implements the domain.WebhookEventServiceInterface
 type WebhookEventService struct {
-	repo               domain.WebhookEventRepository
-	authService        domain.AuthService
-	logger             logger.Logger
-	workspaceRepo      domain.WorkspaceRepository
-	messageHistoryRepo domain.MessageHistoryRepository
+	repo                   domain.WebhookEventRepository
+	authService            domain.AuthService
+	logger                 logger.Logger
+	workspaceRepo          domain.WorkspaceRepository
+	messageHistoryRepo     domain.MessageHistoryRepository
+	eventDispatcherService *EventDispatcherService
 }
 
 // NewWebhookEventService creates a new WebhookEventService
@@ -32,13 +33,15 @@ func NewWebhookEventService(
 	logger logger.Logger,
 	workspaceRepo domain.WorkspaceRepository,
 	messageHistoryRepo domain.MessageHistoryRepository,
+	eventDispatcherService *EventDispatcherService,
 ) *WebhookEventService {
 	return &WebhookEventService{
-		repo:               repo,
-		authService:        authService,
-		logger:             logger,
-		workspaceRepo:      workspaceRepo,
-		messageHistoryRepo: messageHistoryRepo,
+		repo:                   repo,
+		authService:            authService,
+		logger:                 logger,
+		workspaceRepo:          workspaceRepo,
+		messageHistoryRepo:     messageHistoryRepo,
+		eventDispatcherService: eventDispatcherService,
 	}
 }
 
@@ -107,6 +110,8 @@ func (s *WebhookEventService) ProcessWebhook(ctx context.Context, workspaceID st
 	updates := []domain.MessageEventUpdate{}
 
 	for _, event := range events {
+		go s.eventDispatcherService.DispatchEvent(context.Background(), event)
+
 		var statusInfo *string
 
 		// Update message history status if we have a message ID

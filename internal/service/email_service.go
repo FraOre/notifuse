@@ -18,23 +18,24 @@ import (
 )
 
 type EmailService struct {
-	logger           logger.Logger
-	authService      domain.AuthService
-	secretKey        string
-	isDemo           bool
-	workspaceRepo    domain.WorkspaceRepository
-	templateRepo     domain.TemplateRepository
-	templateService  domain.TemplateService
-	messageRepo      domain.MessageHistoryRepository
-	httpClient       domain.HTTPClient
-	webhookEndpoint  string
-	apiEndpoint      string
-	smtpService      domain.EmailProviderService
-	sesService       domain.EmailProviderService
-	sparkPostService domain.EmailProviderService
-	postmarkService  domain.EmailProviderService
-	mailgunService   domain.EmailProviderService
-	mailjetService   domain.EmailProviderService
+	logger                 logger.Logger
+	authService            domain.AuthService
+	secretKey              string
+	isDemo                 bool
+	workspaceRepo          domain.WorkspaceRepository
+	templateRepo           domain.TemplateRepository
+	templateService        domain.TemplateService
+	messageRepo            domain.MessageHistoryRepository
+	httpClient             domain.HTTPClient
+	webhookEndpoint        string
+	apiEndpoint            string
+	smtpService            domain.EmailProviderService
+	sesService             domain.EmailProviderService
+	sparkPostService       domain.EmailProviderService
+	postmarkService        domain.EmailProviderService
+	mailgunService         domain.EmailProviderService
+	mailjetService         domain.EmailProviderService
+	eventDispatcherService *EventDispatcherService
 }
 
 // NewEmailService creates a new EmailService instance
@@ -50,6 +51,7 @@ func NewEmailService(
 	httpClient domain.HTTPClient,
 	webhookEndpoint string,
 	apiEndpoint string,
+	eventDispatcherService *EventDispatcherService,
 ) *EmailService {
 	// Initialize provider services
 	smtpService := NewSMTPService(logger)
@@ -60,23 +62,24 @@ func NewEmailService(
 	mailjetService := NewMailjetService(httpClient, authService, logger)
 
 	return &EmailService{
-		logger:           logger,
-		authService:      authService,
-		secretKey:        secretKey,
-		isDemo:           isDemo,
-		workspaceRepo:    workspaceRepo,
-		templateRepo:     templateRepo,
-		templateService:  templateService,
-		messageRepo:      messageRepo,
-		httpClient:       httpClient,
-		webhookEndpoint:  webhookEndpoint,
-		apiEndpoint:      apiEndpoint,
-		smtpService:      smtpService,
-		sesService:       sesService,
-		sparkPostService: sparkPostService,
-		postmarkService:  postmarkService,
-		mailgunService:   mailgunService,
-		mailjetService:   mailjetService,
+		logger:                 logger,
+		authService:            authService,
+		secretKey:              secretKey,
+		isDemo:                 isDemo,
+		workspaceRepo:          workspaceRepo,
+		templateRepo:           templateRepo,
+		templateService:        templateService,
+		messageRepo:            messageRepo,
+		httpClient:             httpClient,
+		webhookEndpoint:        webhookEndpoint,
+		apiEndpoint:            apiEndpoint,
+		smtpService:            smtpService,
+		sesService:             sesService,
+		sparkPostService:       sparkPostService,
+		postmarkService:        postmarkService,
+		mailgunService:         mailgunService,
+		mailjetService:         mailjetService,
+		eventDispatcherService: eventDispatcherService,
 	}
 }
 
@@ -202,8 +205,26 @@ func (s *EmailService) getProviderService(providerKind domain.EmailProviderKind)
 }
 
 func (s *EmailService) VisitLink(ctx context.Context, messageID string, workspaceID string) error {
+	msg, err := s.messageRepo.Get(ctx, workspaceID, messageID)
+	if err != nil {
+		s.logger.WithField("error", err.Error()).Error("Failed to get message history for visit tracking")
+		return fmt.Errorf("failed to get message: %w", err)
+	}
+
+	now := time.Now().UTC()
+
+	if msg.ClickedAt == nil {
+		event := &domain.WebhookEvent{
+			ID:        uuid.New().String(),
+			Type:      domain.EmailEventClicked,
+			MessageID: messageID,
+			Timestamp: now,
+		}
+		go s.eventDispatcherService.DispatchEvent(context.Background(), event)
+	}
+
 	// find the message by id
-	err := s.messageRepo.SetClicked(ctx, workspaceID, messageID, time.Now())
+	err = s.messageRepo.SetClicked(ctx, workspaceID, messageID, now)
 	if err != nil {
 		s.logger.Error(err.Error())
 		return fmt.Errorf("failed to set clicked: %w", err)
@@ -213,11 +234,29 @@ func (s *EmailService) VisitLink(ctx context.Context, messageID string, workspac
 }
 
 func (s *EmailService) OpenEmail(ctx context.Context, messageID string, workspaceID string) error {
-	// find the message by id
-	err := s.messageRepo.SetOpened(ctx, workspaceID, messageID, time.Now())
+	msg, err := s.messageRepo.Get(ctx, workspaceID, messageID)
+	if err != nil {
+		s.logger.WithField("error", err.Error()).Error("Failed to get message history for open tracking")
+		return fmt.Errorf("failed to get message: %w", err)
+	}
+
+	now := time.Now().UTC()
+
+	if msg.OpenedAt == nil {
+		event := &domain.WebhookEvent{
+			ID:        uuid.New().String(),
+			Type:      domain.EmailEventOpened,
+			MessageID: messageID,
+			Timestamp: now,
+		}
+		go s.eventDispatcherService.DispatchEvent(context.Background(), event)
+	}
+
+	err = s.messageRepo.SetOpened(ctx, workspaceID, messageID, now)
 	if err != nil {
 		return fmt.Errorf("failed to update message opened: %w", err)
 	}
+
 	return nil
 }
 

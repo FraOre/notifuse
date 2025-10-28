@@ -122,6 +122,7 @@ type App struct {
 	segmentService                   *service.SegmentService
 	settingService                   *service.SettingService
 	setupService                     *service.SetupService
+	eventDispatcherService           *service.EventDispatcherService
 	// providers
 	postmarkService  *service.PostmarkService
 	mailgunService   *service.MailgunService
@@ -462,6 +463,11 @@ func (a *App) InitServices() error {
 	a.sparkPostService = service.NewSparkPostService(httpClient, a.authService, a.logger)
 	a.sesService = service.NewSESService(a.authService, a.logger)
 
+	// Initialize event dispatcher service
+	a.eventDispatcherService = service.NewEventDispatcherService(
+		a.logger,
+	)
+
 	// Initialize email service
 	a.emailService = service.NewEmailService(
 		a.logger,
@@ -475,6 +481,7 @@ func (a *App) InitServices() error {
 		httpClient,
 		a.config.WebhookEndpoint,
 		a.config.APIEndpoint,
+		a.eventDispatcherService,
 	)
 
 	// Initialize webhook registration service
@@ -542,6 +549,7 @@ func (a *App) InitServices() error {
 		a.logger,
 		a.workspaceRepo,
 		a.messageHistoryRepo,
+		a.eventDispatcherService,
 	)
 
 	// Initialize broadcast service

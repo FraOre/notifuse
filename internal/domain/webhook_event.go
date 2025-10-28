@@ -25,6 +25,9 @@ const (
 
 	// EmailEventComplaint indicates a complaint was filed for the email
 	EmailEventComplaint EmailEventType = "complaint"
+
+	EmailEventOpened  EmailEventType = "opened"
+	EmailEventClicked EmailEventType = "clicked"
 )
 
 // WebhookEvent represents an event received from an email provider webhook
@@ -164,6 +167,8 @@ func (p *WebhookEventListParams) Validate() error {
 			string(EmailEventDelivered),
 			string(EmailEventBounce),
 			string(EmailEventComplaint),
+			string(EmailEventOpened),
+			string(EmailEventClicked),
 		}
 		if !govalidator.IsIn(string(p.EventType), validEventTypes...) {
 			return fmt.Errorf("invalid event type: %s", p.EventType)
